@@ -6,6 +6,7 @@ import (
 	"go_client_elastic/pkg/go_client_elastic"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -22,17 +23,21 @@ func GetLastRecord(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	host := vars["host"]
 	app := vars["app"]
-	requestMap := go_client_elastic.AppHostParam{}
-	requestMap.Param = append(requestMap.Param, go_client_elastic.AppHost{App: app, Host: host})
-	request := go_client_elastic.AppHostReqstBuilder{
-		Host:         "10.138.32.97",
-		Port:         "8080",
-		Index:        "interstellar-crawler",
-		Type:         "log",
-		AppHostParam: requestMap,
+
+	data, err := go_client_elastic.GetList(go_client_elastic.GCERequestBuilder{
+		Host:  "10.138.32.97",
+		Port:  "8080",
+		Index: "interstellar-crawler",
+		Type:  "log",
+		Must: go_client_elastic.Must{
+			{TermSource: &go_client_elastic.Source{App: app}},
+			{TermSource: &go_client_elastic.Source{HostName: host}},
+		},
+	})
+	if err != "" {
+		log.Fatal(err)
 	}
 	//json.NewEncoder(w).Encode(request)
-	data := go_client_elastic.GetByAppHost(request)
 	json.NewEncoder(w).Encode(data)
 }
 

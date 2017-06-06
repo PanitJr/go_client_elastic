@@ -88,6 +88,9 @@ type Hits struct {
 	MaxScore interface{} `json:"max_score"`
 	Hit      `json:"hits"`
 }
+type Response struct {
+	Response []Result `json:"responses"`
+}
 
 //Result is a big struct for keep the all parts of response from elasticsearch
 type Result struct {
@@ -95,7 +98,10 @@ type Result struct {
 	TimedOut bool `json:"timed_out"`
 	Shards   `json:"_shards"`
 	Hits     `json:"hits"`
+	Status   int `json:"status"`
 }
+
+//Result is a big struct for keep the all parts of response from elasticsearch
 
 //Timestamp is the struct for build request for range query type
 //to serarch in field @timestamp only
@@ -173,7 +179,7 @@ type AppHost struct {
 	Host string `json:"host" binding:"required"`
 }
 
-func getList(r GCERequestBuilder) (Result, string) {
+func GetList(r GCERequestBuilder) (Result, string) {
 	getListError := ""
 	var reqBody []byte
 	if r.MustNot != nil || r.Must != nil {
@@ -243,7 +249,7 @@ func stringField(f []string) string {
 	}
 	return res
 }
-func dateRangeBuilder(from, to time.Time) *DateRange {
+func dateRangeBuild(from, to time.Time) *DateRange {
 	dateRange := &DateRange{
 		Timestamp: Timestamp{
 			Gte:    from.Format(DateLayout),
@@ -254,28 +260,40 @@ func dateRangeBuilder(from, to time.Time) *DateRange {
 	return dateRange
 }
 func GetByAppHost(r AppHostReqstBuilder) interface{} {
-	res := make(map[string]Result)
-	for _, appHost := range r.AppHostParam.Param {
-		data, err := getList(GCERequestBuilder{
-			Host:  r.Host,
-			Port:  r.Port,
-			Index: r.Index,
-			Type:  r.Type,
-			Must: Must{
-				{TermSource: &Source{App: appHost.App}},
-				{TermSource: &Source{HostName: appHost.Host}},
-			},
-		})
-		if err != "" {
-			log.Fatal(err)
-		}
-		res[appHost.App+"-"+appHost.Host] = data
+	reqBody := ``
+	output := make(map[string]Result)
 
+	for _, appHost := range r.AppHostParam.Param {
+		reqBody += fmt.Sprintf(`{"index":"%s","type":"%s"}`, r.Index, r.Type)
+		reqBody += fmt.Sprintf("\n")
+		reqBody += fmt.Sprintf(`{"query":{"bool":{"must":[{"match":{"App":"%s"}},{"match":{"Hostname":"%s"}}]}},"size":1,"sort": {"@timestamp": "desc"}}`, appHost.App, appHost.Host)
+		reqBody += fmt.Sprintf("\n")
 	}
-	/*for key, val := range res {
-		fmt.Printf("key : %v \n val: %+v \n", key, val)
-	}*/
-	return res
+
+	reqURL := fmt.Sprintf("http://%s:%s/_msearch",
+		url.QueryEscape("10.138.32.97"),
+		url.QueryEscape("8080"))
+
+	fmt.Printf("URL = %+v \n", reqURL)
+	fmt.Printf("body = %+v \n", reqBody)
+	req, err := http.NewRequest("POST", reqURL, bytes.NewBuffer([]byte(reqBody)))
+	if err != nil {
+		log.Fatal("NewRequest: ", err)
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("client.Do: ", err)
+	}
+	defer resp.Body.Close()
+	var records Response
+	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
+		log.Fatal(err)
+	}
+	for _, record := range records.Response {
+		output[record.Hits.Hit[0].Source.HostName+"-"+record.Hits.Hit[0].Source.App] = record
+	}
+	return output
 }
 
 /*func main() {

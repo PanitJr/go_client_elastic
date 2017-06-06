@@ -29,9 +29,9 @@ var routes = Routes{
 		GetLastRecord,
 	},
 	Route{
-		"GetLastRecordSet",
+		"GetLastRecord",
 		"POST",
-		"/GetLastRecordSet",
+		"/GetLastRecord",
 		GetLastRecordSet,
 	},
 }
